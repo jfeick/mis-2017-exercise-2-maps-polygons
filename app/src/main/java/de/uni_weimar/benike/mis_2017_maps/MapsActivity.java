@@ -5,7 +5,10 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
@@ -21,6 +24,8 @@ import android.view.ViewTreeObserver;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ToggleButton;
 
@@ -28,7 +33,10 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.Circle;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
@@ -69,7 +77,9 @@ public class MapsActivity extends FragmentActivity implements
     private boolean mPolyActive = false;
     private Polygon mCurrentPoly;
     private List<LatLng> mCurrentPolyLatLngs = new ArrayList<LatLng>();
+    private Circle mPolyStart;
     private Marker mPolyInfo;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -105,6 +115,10 @@ public class MapsActivity extends FragmentActivity implements
                 } else {
                     mPolyActive = false;
                     mCurrentPolyLatLngs.clear();
+                    if(mPolyStart != null)
+                        mPolyStart.remove();
+                    if(mPolyInfo != null)
+                        mPolyInfo = null;
                 }
             }
         });
@@ -211,11 +225,29 @@ public class MapsActivity extends FragmentActivity implements
     }
 
     private LatLng calculatePolygonCentroid(List<LatLng> path) {
-        LatLngBounds.Builder builder = new LatLngBounds.Builder();
-        for(LatLng point : path)
-            builder.include(point);
-        LatLngBounds latLngBounds = builder.build();
-        return latLngBounds.getCenter();
+        double latitude = 0.0;
+        double longitude = 0.0;
+        for (LatLng point : path) {
+            latitude += point.latitude;
+            longitude += point.longitude;
+        }
+        return new LatLng(latitude / path.size(), longitude / path.size());
+    }
+
+    private BitmapDescriptor createMapText(String text) {
+        FrameLayout layout = (FrameLayout) getLayoutInflater().inflate(R.layout.area_text, null);
+
+        TextView areaText = (TextView) layout.findViewById(R.id.areaTextView);
+        areaText.setText(text);
+
+        layout.setDrawingCacheEnabled(true);
+        layout.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        layout.layout(0, 0, layout.getMeasuredWidth(), layout.getMeasuredHeight());
+        layout.buildDrawingCache(true);
+
+        Bitmap bitmap = Bitmap.createBitmap(layout.getDrawingCache());
+        layout.setDrawingCacheEnabled(false);
+        return BitmapDescriptorFactory.fromBitmap(bitmap);
     }
 
     @Override
@@ -230,8 +262,15 @@ public class MapsActivity extends FragmentActivity implements
                         .fillColor(Color.argb(80, 255, 0, 0))
                         .strokeColor(Color.argb(120, 255, 0, 0));
                 mCurrentPoly = mMap.addPolygon(initialPoly);
+                mPolyStart = mMap.addCircle(new CircleOptions()
+                        .center(latLng)
+                        .radius(0.2)
+                        .strokeWidth(15)
+                        .strokeColor(Color.argb(120, 255, 0,0 )));
             } else {
                 mCurrentPoly.setPoints(mCurrentPolyLatLngs);
+                if (mPolyStart != null)
+                    mPolyStart.remove();
             }
 
             // Calculate and show area
@@ -247,10 +286,11 @@ public class MapsActivity extends FragmentActivity implements
                 } else {
                     areaStr = decimalFormat.format(area) + "m²";
                 }
+
                 mPolyInfo = mMap.addMarker(new MarkerOptions()
                         .position(centroid)
-                        .title(areaStr)
-                        .icon(BitmapDescriptorFactory.defaultMarker())
+                        //.title(areaStr)
+                        .icon(createMapText(areaStr))
                 );
             }
         } else { // we are adding a marker
