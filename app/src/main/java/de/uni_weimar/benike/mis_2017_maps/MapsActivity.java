@@ -28,6 +28,7 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
@@ -36,6 +37,7 @@ import com.google.android.gms.maps.model.Polygon;
 import com.google.android.gms.maps.model.PolygonOptions;
 import com.google.maps.android.SphericalUtil;
 
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -67,6 +69,7 @@ public class MapsActivity extends FragmentActivity implements
     private boolean mPolyActive = false;
     private Polygon mCurrentPoly;
     private List<LatLng> mCurrentPolyLatLngs = new ArrayList<LatLng>();
+    private Marker mPolyInfo;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -235,6 +238,20 @@ public class MapsActivity extends FragmentActivity implements
             if(mCurrentPolyLatLngs.size() > 2) {
                 double area = SphericalUtil.computeArea(mCurrentPolyLatLngs);
                 LatLng centroid = calculatePolygonCentroid(mCurrentPolyLatLngs);
+                if(mPolyInfo != null)
+                    mPolyInfo.remove();
+                String areaStr = new String();
+                DecimalFormat decimalFormat = new DecimalFormat("####.##");
+                if(area >= 10 * 1000) {
+                    areaStr = decimalFormat.format(area / (1000 * 1000)) + "km²";
+                } else {
+                    areaStr = decimalFormat.format(area) + "m²";
+                }
+                mPolyInfo = mMap.addMarker(new MarkerOptions()
+                        .position(centroid)
+                        .title(areaStr)
+                        .icon(BitmapDescriptorFactory.defaultMarker())
+                );
             }
         } else { // we are adding a marker
             String title = mEditText.getText().toString();
