@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
@@ -18,8 +19,10 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.Toast;
+import android.widget.ToggleButton;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -29,9 +32,16 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polygon;
+import com.google.android.gms.maps.model.PolygonOptions;
+import com.google.maps.android.SphericalUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static java.lang.Math.PI;
+import static java.lang.Math.tan;
+import static java.lang.Math.toRadians;
 
 public class MapsActivity extends FragmentActivity implements
         OnMapReadyCallback,
@@ -53,6 +63,10 @@ public class MapsActivity extends FragmentActivity implements
 
     private Marker mLastSelectedMarker;
     private List<MarkerOptions> mMarkerOptions = new ArrayList<MarkerOptions>();
+    private ToggleButton mPolyButton;
+    private boolean mPolyActive = false;
+    private Polygon mCurrentPoly;
+    private List<LatLng> mCurrentPolyLatLngs = new ArrayList<LatLng>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,6 +82,10 @@ public class MapsActivity extends FragmentActivity implements
                 mMap.clear();
                 mMarkerCount = 0;
                 mMarkerOptions.clear();
+                mPolyButton.setChecked(false);
+                mCurrentPolyLatLngs.clear();
+                mPolyActive = false;
+
                 SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
                 SharedPreferences.Editor editor = sharedPref.edit();
                 editor.clear();
@@ -75,6 +93,18 @@ public class MapsActivity extends FragmentActivity implements
             }
         });
 
+        mPolyButton = (ToggleButton) findViewById(R.id.polyButton);
+        mPolyButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton compoundButton, boolean isChecked) {
+                if(isChecked) {
+                    mPolyActive = true;
+                } else {
+                    mPolyActive = false;
+                    mCurrentPolyLatLngs.clear();
+                }
+            }
+        });
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
@@ -90,7 +120,7 @@ public class MapsActivity extends FragmentActivity implements
             // Permission to access the location is missing.
             ActivityCompat.requestPermissions(MapsActivity.this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    MY_PERMISSIONS_REQUEST_LOCATION );
+                    LOCATION_PERMISSION_REQUEST_CODE );
             /* PermissionUtils.requestPermission(this, LOCATION_PERMISSION_REQUEST_CODE,
                     Manifest.permission.ACCESS_FINE_LOCATION, true); */
         } else if (mMap != null) {
@@ -160,45 +190,6 @@ public class MapsActivity extends FragmentActivity implements
         moveToMyLocation();
     }
 
-
-    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
-    private void checkLocationPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-
-            // Should we show an explanation?
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
-                    Manifest.permission.ACCESS_FINE_LOCATION)) {
-
-                // Show an explanation to the user *asynchronously* -- don't block
-                // this thread waiting for the user's response! After the user
-                // sees the explanation, try again to request the permission.
-                new AlertDialog.Builder(this)
-                        .setTitle("Location Permission Needed")
-                        .setMessage("This app needs the Location permission, please accept to use location functionality")
-                        .setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialogInterface, int i) {
-                                //Prompt the user once explanation has been shown
-                                ActivityCompat.requestPermissions(MapsActivity.this,
-                                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                                        MY_PERMISSIONS_REQUEST_LOCATION );
-                            }
-                        })
-                        .create()
-                        .show();
-
-
-            } else {
-                // No explanation needed, we can request the permission.
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                        MY_PERMISSIONS_REQUEST_LOCATION );
-            }
-        }
-    }
-
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
@@ -216,60 +207,55 @@ public class MapsActivity extends FragmentActivity implements
         }
     }
 
-    /*
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           String permissions[], int[] grantResults) {
-        switch (requestCode) {
-            case MY_PERMISSIONS_REQUEST_LOCATION: {
-                // If request is cancelled, the result arrays are empty.
-                if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                    // permission was granted, yay! Do the
-                    // location-related task you need to do.
-                    if (ContextCompat.checkSelfPermission(this,
-                            Manifest.permission.ACCESS_FINE_LOCATION)
-                            == PackageManager.PERMISSION_GRANTED) {
-                        initMapLocation();
-                    }
-
-                } else {
-
-                    // permission denied, boo! Disable the
-                    // functionality that depends on this permission.
-                    Toast.makeText(this, "permission denied", Toast.LENGTH_LONG).show();
-                    // TODO: exit application
-                }
-                return;
-            }
-        }
+    private LatLng calculatePolygonCentroid(List<LatLng> path) {
+        LatLngBounds.Builder builder = new LatLngBounds.Builder();
+        for(LatLng point : path)
+            builder.include(point);
+        LatLngBounds latLngBounds = builder.build();
+        return latLngBounds.getCenter();
     }
-    */
-
 
     @Override
     public void onMapLongClick(LatLng latLng) {
         //Toast.makeText(this, "Long click on " + latLng.toString(), Toast.LENGTH_SHORT).show();
 
-        String title = mEditText.getText().toString();
-        mEditText.setText("");
+        if(mPolyActive) {
+            mCurrentPolyLatLngs.add(latLng);
+            if(mCurrentPolyLatLngs.size() == 1) {
+                PolygonOptions initialPoly = new PolygonOptions()
+                        .add(latLng)
+                        .fillColor(Color.argb(80, 255, 0, 0))
+                        .strokeColor(Color.argb(120, 255, 0, 0));
+                mCurrentPoly = mMap.addPolygon(initialPoly);
+            } else {
+                mCurrentPoly.setPoints(mCurrentPolyLatLngs);
+            }
 
-        MarkerOptions markerOptions = new MarkerOptions()
-                .position(latLng)
-                .title(title)
-                .draggable(true);
-        mMap.addMarker(markerOptions);
-        mMarkerOptions.add(markerOptions);
+            // Calculate and show area
+            if(mCurrentPolyLatLngs.size() > 2) {
+                double area = SphericalUtil.computeArea(mCurrentPolyLatLngs);
+                LatLng centroid = calculatePolygonCentroid(mCurrentPolyLatLngs);
+            }
+        } else { // we are adding a marker
+            String title = mEditText.getText().toString();
+            mEditText.setText("");
 
-        SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = sharedPref.edit();
-        editor.putString("title" + Integer.toString((mMarkerCount)), title);
-        editor.putString("latitude" + Integer.toString((mMarkerCount)), Double.toString(latLng.latitude));
-        editor.putString("longitude" + Integer.toString((mMarkerCount)), Double.toString(latLng.longitude));
-        mMarkerCount += 1;
-        editor.putInt("markerCount", mMarkerCount);
-        editor.commit();
+            MarkerOptions markerOptions = new MarkerOptions()
+                    .position(latLng)
+                    .title(title)
+                    .draggable(true);
+            mMap.addMarker(markerOptions);
+            mMarkerOptions.add(markerOptions);
+
+            SharedPreferences sharedPref = getPreferences(Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor = sharedPref.edit();
+            editor.putString("title" + Integer.toString((mMarkerCount)), title);
+            editor.putString("latitude" + Integer.toString((mMarkerCount)), Double.toString(latLng.latitude));
+            editor.putString("longitude" + Integer.toString((mMarkerCount)), Double.toString(latLng.longitude));
+            mMarkerCount += 1;
+            editor.putInt("markerCount", mMarkerCount);
+            editor.commit();
+        }
     }
 
     private void restoreMarkers() {
@@ -292,28 +278,6 @@ public class MapsActivity extends FragmentActivity implements
 
         }
     }
-
-
-    /** Called when the Clear button is clicked. */
-    public void onClearMap(View view) {
-        //if (!checkReady()) {
-        //    return;
-        //}
-        mMap.clear();
-    }
-
-    /** Called when the Reset button is clicked. */
-    public void onResetMap(View view) {
-        //if (!checkReady()) {
-        //    return;
-        //}
-        // Clear the map because we don't want duplicates of the markers.
-        mMap.clear();
-    }
-
-    //
-    // Marker related listeners.
-    //
 
     @Override
     public boolean onMarkerClick(final Marker marker) {

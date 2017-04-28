@@ -1,0 +1,12 @@
+<resources>
+    <!--
+    TODO: Before you run your application, you need a Google Maps API key.
+    Package name:
+    72:D3:A2:55:2C:7E:56:EB:BE:8E:98:03:9C:6A:C8:27:F3:6C:14:0B
+
+    SHA-1 certificate fingerprint:
+    72:D3:A2:55:2C:7E:56:EB:BE:8E:98:03:9C:6A:C8:27:F3:6C:14:0B
+
+    -->
+    <string name="google_maps_key" templateMergeStrategy="preserve" translatable="false">AIzaSyBMQpkmx76aCAOLwRUBhKSMJZZTkFp4PVM</string>
+</resources>
