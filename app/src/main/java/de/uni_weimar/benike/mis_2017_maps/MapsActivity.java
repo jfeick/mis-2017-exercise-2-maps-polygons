@@ -224,6 +224,53 @@ public class MapsActivity extends FragmentActivity implements
         }
     }
 
+    /*
+    private LatLng calculatePolygonCentroid(List<LatLng> path, double area) {
+        path.add(path.get(0));
+        double lat = 0.0;
+        double lon = 0.0;
+        for(int i = 0; i < path.size() + 1; ++i) {
+            double sf = path.get(i).longitude * path.get(i+1).latitude
+                    - path.get(i + 1).latitude * path.get(i).longitude;
+            lat += path.get(i).latitude * path.get(i+1).latitude * sf;
+            lon += path.get(i).longitude * path.get(i+1).longitude * sf;
+        }
+        lat = lat / 6 / area;
+        lon = lon / 6 / area;
+        if(lat < 0) {
+            lat = -lat;
+            lon = -lon;
+        }
+        return new LatLng(lat, lon);
+    }
+    */
+
+    private LatLng calculatePolygonCentroid2(List<LatLng> path, double area) {
+        double Cx = 0.0;
+        double Cy = 0.0;
+        double area2 = 0.0;
+
+        List<LatLng> lpath = new ArrayList<LatLng>(path);
+        lpath.add(path.get(0));
+
+        for(int i = 0; i < lpath.size() - 1; ++i) {
+            area2 += lpath.get(i).latitude * lpath.get(i+1).longitude
+                    - lpath.get(i+1).latitude * lpath.get(i).longitude;
+        }
+        area2 /= 2;
+
+        for(int i = 0; i < lpath.size() - 1; ++i) {
+            double sf = (lpath.get(i).latitude * lpath.get(i+1).longitude
+                    - lpath.get(i+1).latitude * lpath.get(i).longitude);
+            Cx += (lpath.get(i).latitude + lpath.get(i+1).latitude) * sf;
+            Cy += (lpath.get(i).longitude + lpath.get(i+1).longitude) * sf;
+        }
+        Cx /= (6 * area);
+        Cy /= (6 * area);
+        return new LatLng(Cx, Cy);
+    }
+
+
     private LatLng calculatePolygonCentroid(List<LatLng> path) {
         double latitude = 0.0;
         double longitude = 0.0;
@@ -276,7 +323,8 @@ public class MapsActivity extends FragmentActivity implements
             // Calculate and show area
             if(mCurrentPolyLatLngs.size() > 2) {
                 double area = SphericalUtil.computeArea(mCurrentPolyLatLngs);
-                LatLng centroid = calculatePolygonCentroid(mCurrentPolyLatLngs);
+                //LatLng centroid = calculatePolygonCentroid(mCurrentPolyLatLngs);
+                LatLng centroid = calculatePolygonCentroid2(mCurrentPolyLatLngs, area);
                 if(mPolyInfo != null)
                     mPolyInfo.remove();
                 String areaStr = new String();
